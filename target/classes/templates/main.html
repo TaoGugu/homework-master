@@ -1,0 +1,451 @@
+<!DOCTYPE html>
+<html lang="zh" xmlns:th="http://www.thymeleaf.org">
+<head>
+    <meta charset="utf-8">
+    <meta content="width=device-width, initial-scale=1.0" name="viewport">
+    <!--360浏览器优先以webkit内核解析-->
+    <title>作业管理系统首页</title>
+    <link href="favicon.ico" rel="shortcut icon">
+    <link href="../static/css/bootstrap.min.css" rel="stylesheet" th:href="@{/css/bootstrap.min.css}"/>
+    <link href="../static/css/font-awesome.min.css" rel="stylesheet" th:href="@{/css/font-awesome.min.css}"/>
+    <link href="../static/css/style.min.css" rel="stylesheet" th:href="@{/css/style.min.css}"/>
+</head>
+
+<body class="gray-bg">
+<div class="wrapper wrapper-content">
+    <div class="row">
+        <div class="col-sm-12">
+            <div class="ibox float-e-margins">
+                <div class="ibox-title">
+                    <h5>通知公告</h5>
+                </div>
+                <div class="ibox-content" id="noticelist">
+                </div>
+            </div>
+        </div>
+        <div class="col-sm-6">
+            <div class="ibox float-e-margins">
+                <div class="ibox-title">
+                    <h5>未来一周气温变化</h5>
+                </div>
+                <div class="ibox-content">
+                    <div class="echarts" id="temperature"></div>
+                </div>
+            </div>
+        </div>
+        <div class="col-sm-6">
+            <div class="ibox float-e-margins">
+                <div class="ibox-title">
+                    <h5>降雨量vs蒸发量</h5>
+                </div>
+                <div class="ibox-content">
+                    <div class="echarts" id="rainfall"></div>
+                </div>
+            </div>
+        </div>
+        <div class="col-sm-6">
+            <div class="ibox float-e-margins">
+                <div class="ibox-title">
+                    <h5>访问来源</h5>
+                </div>
+                <div class="ibox-content">
+                    <div class="echarts" id="source"></div>
+                </div>
+            </div>
+        </div>
+        <div class="col-sm-6">
+            <div class="ibox float-e-margins">
+                <div class="ibox-title">
+                    <h5>全国iPhone销量</h5>
+                </div>
+                <div class="ibox-content">
+                    <div class="echarts" id="map"></div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+<script th:src="@{/js/jquery.min.js}"></script>
+<script src="../static/ruoyi/js/ry-ui.js" th:src="@{/ruoyi/js/ry-ui.js?v=4.7.3}"></script>
+<script src="../static/ruoyi/js/common.js?v=4.7.3" th:src="@{/ruoyi/js/common.js?v=4.7.3}"></script>
+<script th:src="@{/js/bootstrap.min.js}"></script>
+<script th:src="@{/ajax/libs/layer/layer.min.js}"></script>
+<th:block th:include="include :: echarts-js"/>
+<script th:inline="javascript">
+    const loginName = [[${@permission.getPrincipalProperty('loginName')}]]
+
+    $(function () {
+        /**
+         * 获取通知公告列表
+         */
+        $.ajax({
+            url: "/getNoticelist",
+            async: false,//同步方式
+            type: "GET",
+            success: function (res) {
+                let html = "";
+                if (res.code == 0) {
+                    let {data} = res, arr = data.filter(i => i.status === '0');
+                    if (arr.length > 0) {
+                        for (let n = 0; n < arr.length; n++) {
+                            let receptionUserList = []
+                            if (arr[n].receptionUser) {
+                                receptionUserList = arr[n].receptionUser.split(',')
+                            }
+                            if (arr[n].noticeType === '1') {
+                                html += '<div class="alert alert-info" >';
+                                if (receptionUserList.includes(loginName)) {
+                                    html += '<span class="label label-info pull-left" style="margin-right: 10px">已确认</span>';
+                                } else {
+                                    html += '<span class="label label-danger pull-left" style="margin-right: 10px">未确认</span>';
+                                }
+                                html += '<a href="javascript:void(0);" onClick="noticeDetail(' + arr[n].noticeId + ')" href="" class="alert-link"  title="' + arr[n].noticeTitle + '">' + arr[n].noticeTitle + '</a>';
+                                html += '</a><span class="label label-warning pull-right">' + `通知时间-${arr[n].createTime}` + '</span></div>';
+                            } else {
+                                html += '<div class="alert alert-info" >';
+                                if (receptionUserList.includes(loginName)) {
+                                    html += '<span class="label label-info pull-left" style="margin-right: 10px">已确认</span>';
+                                } else {
+                                    html += '<span class="label label-danger pull-left" style="margin-right: 10px">未确认</span>';
+                                }
+                                html += '<a href="javascript:void(0);" onClick="noticeDetail(' + arr[n].noticeId + ')" href="" class="alert-link"  title="' + arr[n].noticeTitle + '">' + arr[n].noticeTitle + '</a>';
+                                html += '</a><span class="label label-success pull-right">' + `公告时间-${arr[n].createTime}` + '</span></div>';
+                            }
+                        }
+                        $("#noticelist").html(html);
+                    } else {
+                        $("#noticelist").html("暂无数据")
+                    }
+                } else {
+                    $.modal.msgError('请求失败！');
+                }
+            }
+        });
+        getLineChart();
+        getBarChart();
+        getPieChart();
+        getMapChart();
+    })
+
+    function getLineChart() {
+        let lineChart = echarts.init(document.getElementById("temperature"));
+        let lineoption = {
+            tooltip: {
+                trigger: 'axis'
+            },
+            legend: {
+                data: ['最高气温', '最低气温']
+            },
+            grid: {
+                x: 40,
+                x2: 40,
+                y2: 24
+            },
+            calculable: true,
+            xAxis: [
+                {
+                    type: 'category',
+                    boundaryGap: false,
+                    data: ['周一', '周二', '周三', '周四', '周五', '周六', '周日']
+                }
+            ],
+            yAxis: [
+                {
+                    type: 'value',
+                    axisLabel: {
+                        formatter: '{value} °C'
+                    }
+                }
+            ],
+            series: [
+                {
+                    name: '最高气温',
+                    type: 'line',
+                    data: [11, 11, 15, 13, 12, 13, 10],
+                    markPoint: {
+                        data: [
+                            {type: 'max', name: '最大值'},
+                            {type: 'min', name: '最小值'}
+                        ]
+                    },
+                    markLine: {
+                        data: [
+                            {type: 'average', name: '平均值'}
+                        ]
+                    }
+                },
+                {
+                    name: '最低气温',
+                    type: 'line',
+                    data: [1, -2, 2, 5, 3, 2, 0],
+                    markPoint: {
+                        data: [
+                            {name: '周最低', value: -2, xAxis: 1, yAxis: -1.5}
+                        ]
+                    },
+                    markLine: {
+                        data: [
+                            {type: 'average', name: '平均值'}
+                        ]
+                    }
+                }
+            ]
+        };
+        lineChart.setOption(lineoption);
+        $(window).resize(lineChart.resize);
+    }
+
+    function getBarChart() {
+        let barChart = echarts.init(document.getElementById("rainfall"));
+        let baroption = {
+            tooltip: {
+                trigger: 'axis'
+            },
+            legend: {
+                data: ['蒸发量', '降水量']
+            },
+            grid: {
+                x: 30,
+                x2: 40,
+                y2: 24
+            },
+            calculable: true,
+            xAxis: [
+                {
+                    type: 'category',
+                    data: ['1月', '2月', '3月', '4月', '5月', '6月', '7月', '8月', '9月', '10月', '11月', '12月']
+                }
+            ],
+            yAxis: [
+                {
+                    type: 'value'
+                }
+            ],
+            series: [
+                {
+                    name: '蒸发量',
+                    type: 'bar',
+                    data: [2.0, 4.9, 7.0, 23.2, 25.6, 76.7, 135.6, 162.2, 32.6, 20.0, 6.4, 3.3],
+                    markPoint: {
+                        data: [
+                            {type: 'max', name: '最大值'},
+                            {type: 'min', name: '最小值'}
+                        ]
+                    },
+                    markLine: {
+                        data: [
+                            {type: 'average', name: '平均值'}
+                        ]
+                    }
+                },
+                {
+                    name: '降水量',
+                    type: 'bar',
+                    data: [2.6, 5.9, 9.0, 26.4, 28.7, 70.7, 175.6, 182.2, 48.7, 18.8, 6.0, 2.3],
+                    markPoint: {
+                        data: [
+                            {name: '年最高', value: 182.2, xAxis: 7, yAxis: 183, symbolSize: 18},
+                            {name: '年最低', value: 2.3, xAxis: 11, yAxis: 3}
+                        ]
+                    },
+                    markLine: {
+                        data: [
+                            {type: 'average', name: '平均值'}
+                        ]
+                    }
+                }
+            ]
+        };
+        barChart.setOption(baroption);
+        window.onresize = barChart.resize;
+    }
+
+    function getPieChart() {
+        let pieChart = echarts.init(document.getElementById("source"));
+        let pieoption = {
+            tooltip: {
+                trigger: 'item',
+                formatter: "{a} <br/>{b} : {c} ({d}%)"
+            },
+            legend: {
+                orient: 'vertical',
+                x: 'left',
+                data: ['直接访问', '邮件营销', '联盟广告', '视频广告', '搜索引擎']
+            },
+            calculable: true,
+            series: [
+                {
+                    name: '访问来源',
+                    type: 'pie',
+                    radius: '55%',
+                    center: ['50%', '60%'],
+                    data: [
+                        {value: 335, name: '直接访问'},
+                        {value: 310, name: '邮件营销'},
+                        {value: 234, name: '联盟广告'},
+                        {value: 135, name: '视频广告'},
+                        {value: 1548, name: '搜索引擎'}
+                    ]
+                }
+            ]
+        };
+        pieChart.setOption(pieoption);
+        $(window).resize(pieChart.resize);
+    }
+
+    function getMapChart() {
+        let mapChart = echarts.init(document.getElementById("map"));
+        let mapoption = {
+            tooltip: {
+                trigger: 'item'
+            },
+            legend: {
+                orient: 'vertical',
+                x: 'left',
+                data: ['iphone3', 'iphone4', 'iphone5']
+            },
+            dataRange: {
+                min: 0,
+                max: 2500,
+                x: 'left',
+                y: 'bottom',
+                text: ['高', '低'],           // 文本，默认为数值文本
+                calculable: true
+            },
+            toolbox: {
+                show: true,
+                orient: 'vertical',
+                x: 'right',
+                y: 'center',
+                feature: {
+                    mark: {show: true},
+                    dataView: {show: true, readOnly: false},
+                    restore: {show: true},
+                    saveAsImage: {show: true}
+                }
+            },
+            roamController: {
+                show: true,
+                x: 'right',
+                mapTypeControl: {
+                    'china': true
+                }
+            },
+            series: [
+                {
+                    name: 'iphone3',
+                    type: 'map',
+                    mapType: 'china',
+                    roam: false,
+                    itemStyle: {
+                        normal: {label: {show: true}},
+                        emphasis: {label: {show: true}}
+                    },
+                    data: [
+                        {name: '北京', value: Math.round(Math.random() * 1000)},
+                        {name: '天津', value: Math.round(Math.random() * 1000)},
+                        {name: '上海', value: Math.round(Math.random() * 1000)},
+                        {name: '重庆', value: Math.round(Math.random() * 1000)},
+                        {name: '河北', value: Math.round(Math.random() * 1000)},
+                        {name: '河南', value: Math.round(Math.random() * 1000)},
+                        {name: '云南', value: Math.round(Math.random() * 1000)},
+                        {name: '辽宁', value: Math.round(Math.random() * 1000)},
+                        {name: '黑龙江', value: Math.round(Math.random() * 1000)},
+                        {name: '湖南', value: Math.round(Math.random() * 1000)},
+                        {name: '安徽', value: Math.round(Math.random() * 1000)},
+                        {name: '山东', value: Math.round(Math.random() * 1000)},
+                        {name: '新疆', value: Math.round(Math.random() * 1000)},
+                        {name: '江苏', value: Math.round(Math.random() * 1000)},
+                        {name: '浙江', value: Math.round(Math.random() * 1000)},
+                        {name: '江西', value: Math.round(Math.random() * 1000)},
+                        {name: '湖北', value: Math.round(Math.random() * 1000)},
+                        {name: '广西', value: Math.round(Math.random() * 1000)},
+                        {name: '甘肃', value: Math.round(Math.random() * 1000)},
+                        {name: '山西', value: Math.round(Math.random() * 1000)},
+                        {name: '内蒙古', value: Math.round(Math.random() * 1000)},
+                        {name: '陕西', value: Math.round(Math.random() * 1000)},
+                        {name: '吉林', value: Math.round(Math.random() * 1000)},
+                        {name: '福建', value: Math.round(Math.random() * 1000)},
+                        {name: '贵州', value: Math.round(Math.random() * 1000)},
+                        {name: '广东', value: Math.round(Math.random() * 1000)},
+                        {name: '青海', value: Math.round(Math.random() * 1000)},
+                        {name: '西藏', value: Math.round(Math.random() * 1000)},
+                        {name: '四川', value: Math.round(Math.random() * 1000)},
+                        {name: '宁夏', value: Math.round(Math.random() * 1000)},
+                        {name: '海南', value: Math.round(Math.random() * 1000)},
+                        {name: '台湾', value: Math.round(Math.random() * 1000)},
+                        {name: '香港', value: Math.round(Math.random() * 1000)},
+                        {name: '澳门', value: Math.round(Math.random() * 1000)}
+                    ]
+                },
+                {
+                    name: 'iphone4',
+                    type: 'map',
+                    mapType: 'china',
+                    itemStyle: {
+                        normal: {label: {show: true}},
+                        emphasis: {label: {show: true}}
+                    },
+                    data: [
+                        {name: '北京', value: Math.round(Math.random() * 1000)},
+                        {name: '天津', value: Math.round(Math.random() * 1000)},
+                        {name: '上海', value: Math.round(Math.random() * 1000)},
+                        {name: '重庆', value: Math.round(Math.random() * 1000)},
+                        {name: '河北', value: Math.round(Math.random() * 1000)},
+                        {name: '安徽', value: Math.round(Math.random() * 1000)},
+                        {name: '新疆', value: Math.round(Math.random() * 1000)},
+                        {name: '浙江', value: Math.round(Math.random() * 1000)},
+                        {name: '江西', value: Math.round(Math.random() * 1000)},
+                        {name: '山西', value: Math.round(Math.random() * 1000)},
+                        {name: '内蒙古', value: Math.round(Math.random() * 1000)},
+                        {name: '吉林', value: Math.round(Math.random() * 1000)},
+                        {name: '福建', value: Math.round(Math.random() * 1000)},
+                        {name: '广东', value: Math.round(Math.random() * 1000)},
+                        {name: '西藏', value: Math.round(Math.random() * 1000)},
+                        {name: '四川', value: Math.round(Math.random() * 1000)},
+                        {name: '宁夏', value: Math.round(Math.random() * 1000)},
+                        {name: '香港', value: Math.round(Math.random() * 1000)},
+                        {name: '澳门', value: Math.round(Math.random() * 1000)}
+                    ]
+                },
+                {
+                    name: 'iphone5',
+                    type: 'map',
+                    mapType: 'china',
+                    itemStyle: {
+                        normal: {label: {show: true}},
+                        emphasis: {label: {show: true}}
+                    },
+                    data: [
+                        {name: '北京', value: Math.round(Math.random() * 1000)},
+                        {name: '天津', value: Math.round(Math.random() * 1000)},
+                        {name: '上海', value: Math.round(Math.random() * 1000)},
+                        {name: '广东', value: Math.round(Math.random() * 1000)},
+                        {name: '台湾', value: Math.round(Math.random() * 1000)},
+                        {name: '香港', value: Math.round(Math.random() * 1000)},
+                        {name: '澳门', value: Math.round(Math.random() * 1000)}
+                    ]
+                }
+            ]
+        };
+        mapChart.setOption(mapoption);
+        $(window).resize(mapChart.resize);
+    }
+
+    function noticeDetail(id) {
+        let url = "/noticedetail/" + id;
+        $.modal.open("通知公告详情", url);
+        // let options = {
+        //     title: "通知公告详情",
+        //     url: url,
+        //     skin: 'layui-layer-gray',
+        //     btn: ['关闭'],
+        //     yes: function (index, layero) {
+        //         $.modal.close(index);
+        //     }
+        // };
+        // $.modal.openOptions(options);
+    }
+</script>
+</body>
+</html>
